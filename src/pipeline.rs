@@ -4,18 +4,19 @@ pub fn create_render_pipeline(
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     vertex_layouts: &[wgpu::VertexBufferLayout],
-    shader: wgpu::ShaderModule,
+    vert_shader: wgpu::ShaderModule,
+    frag_shader: wgpu::ShaderModule,
 ) -> wgpu::RenderPipeline {
     let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(layout),
         vertex: wgpu::VertexState {
-            module: &shader,
+            module: &vert_shader,
             entry_point: "main",
             buffers: vertex_layouts,
         },
         fragment: Some(wgpu::FragmentState {
-            module: &shader,
+            module: &frag_shader,
             entry_point: "main",
             targets: &[wgpu::ColorTargetState {
                 format: color_format,

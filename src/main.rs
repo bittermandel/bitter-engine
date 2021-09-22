@@ -145,7 +145,7 @@ impl State {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
                     limits: wgpu::Limits::default(),
                 },
                 None, // Trace path
@@ -208,7 +208,7 @@ impl State {
         });
 
         let camera = Camera {
-            eye: (0.0, 1.0, 2.0).into(),
+            eye: (0.0, 5.0, -10.0).into(),
             target: (0.0, 0.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: config.width as f32 / config.height as f32,
@@ -262,7 +262,7 @@ impl State {
                         x: x as f32,
                         y: 0.0,
                         z: z as f32,
-                    } - INSTANCE_DISPLACEMENT;
+                    };
 
                     let rotation = if position.is_zero() {
                         cgmath::Quaternion::from_axis_angle(
@@ -333,17 +333,6 @@ impl State {
             label: None,
         });
 
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &camera_bind_group_layout,
-                    &light_bind_group_layout,
-                ],
-                push_constant_ranges: &[],
-            });
-
         let camera_controller = CameraController::new(0.2);
 
         let light_render_pipeline = {
@@ -353,12 +342,10 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-            /*let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("LightShader"),
-                source: wgpu::ShaderSource::SpirV(include_bytes!("light.frag.spv").into()),
-            };*/
-
-            let shader = unsafe {
+            let vert_shader = unsafe {
+                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("light.vert.spv"))
+            };
+            let frag_shader = unsafe {
                 device.create_shader_module_spirv(&wgpu::include_spirv_raw!("light.frag.spv"))
             };
             create_render_pipeline(
@@ -367,23 +354,37 @@ impl State {
                 config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc()],
-                shader,
+                vert_shader,
+                frag_shader,
             )
         };
 
         let render_pipeline = {
-            let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-            };
+            let render_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[
+                        &texture_bind_group_layout,
+                        &camera_bind_group_layout,
+                        &light_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                });
 
+            let vert_shader = unsafe {
+                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("shader.vert.spv"))
+            };
+            let frag_shader = unsafe {
+                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("shader.frag.spv"))
+            };
             create_render_pipeline(
                 &device,
                 &render_pipeline_layout,
                 config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc(), InstanceRaw::desc()],
-                shader,
+                vert_shader,
+                frag_shader,
             )
         };
 
