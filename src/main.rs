@@ -145,7 +145,7 @@ impl State {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
+                    features: wgpu::Features::empty(),
                     limits: wgpu::Limits::default(),
                 },
                 None, // Trace path
@@ -342,12 +342,9 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-            let vert_shader = unsafe {
-                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("light.vert.spv"))
-            };
-            let frag_shader = unsafe {
-                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("light.frag.spv"))
-            };
+            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("light.vert.spv"));
+            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("light.frag.spv"));
+
             create_render_pipeline(
                 &device,
                 &layout,
@@ -371,12 +368,9 @@ impl State {
                     push_constant_ranges: &[],
                 });
 
-            let vert_shader = unsafe {
-                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("shader.vert.spv"))
-            };
-            let frag_shader = unsafe {
-                device.create_shader_module_spirv(&wgpu::include_spirv_raw!("shader.frag.spv"))
-            };
+            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
+            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
+
             create_render_pipeline(
                 &device,
                 &render_pipeline_layout,
