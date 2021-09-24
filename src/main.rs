@@ -1,11 +1,12 @@
 use anyhow::Result;
 use bytemuck;
 use cameracontroller::CameraController;
-use cgmath::{InnerSpace, Rotation3, Zero};
+use cgmath::{EuclideanSpace, InnerSpace, Rotation3, Zero};
 use lighting::DrawLight;
+use log::Log;
 use model::{DrawModel, Model};
 use std::iter;
-use wgpu::util::DeviceExt;
+use wgpu::{RenderPass, util::DeviceExt};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -24,6 +25,7 @@ mod lighting;
 mod model;
 mod pipeline;
 mod texture;
+mod renderpass;
 
 struct Instance {
     position: cgmath::Vector3<f32>,
@@ -63,7 +65,7 @@ impl InstanceRaw {
                     offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
-                },
+                }/*,
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
                     shader_location: 9,
@@ -78,7 +80,7 @@ impl InstanceRaw {
                     offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
                     shader_location: 11,
                     format: wgpu::VertexFormat::Float32x3,
-                },
+                },*/
             ],
         }
     }
@@ -108,9 +110,7 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
     light_render_pipeline: wgpu::RenderPipeline,
-    diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -120,9 +120,15 @@ struct State {
     instance_buffer: wgpu::Buffer,
     obj_model: Model,
     depth_texture: texture::Texture,
-    light_uniform: lighting::LightUniform,
+    light: lighting::Light,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
+
+    shadow_pass: renderpass::Pass,
+    shadow_texture: texture::Texture,
+    shadow_bind_group: wgpu::BindGroup,
+    camera_pass: renderpass::Pass,
+    camera_depth: wgpu::TextureView
 }
 
 impl State {
@@ -162,10 +168,6 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let diffuse_bytes = include_bytes!("happy-tree.png");
-        let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap();
-
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -192,21 +194,6 @@ impl State {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
-
         let camera = Camera {
             eye: (0.0, 5.0, -10.0).into(),
             target: (0.0, 0.0, 0.0).into(),
@@ -220,36 +207,6 @@ impl State {
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
         const SPACE_BETWEEN: f32 = 3.0;
 
         let instances = (0..NUM_INSTANCES_PER_ROW)
@@ -259,9 +216,9 @@ impl State {
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
                     let position = cgmath::Vector3 {
-                        x: x as f32,
+                        x,
                         y: 0.0,
-                        z: z as f32,
+                        z,
                     };
 
                     let rotation = if position.is_zero() {
@@ -297,15 +254,13 @@ impl State {
         )
         .unwrap();
 
-        let light_uniform = lighting::LightUniform {
-            position: [2.0, 2.0, 2.0],
-            _padding: 0,
-            color: [1.0, 1.0, 1.0],
+        let light = lighting::Light {
+            position: cgmath::Point3 { x: 2.0, y: 2.0, z: 2.0 }
         };
 
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light VB"),
-            contents: bytemuck::cast_slice(&[light_uniform]),
+            contents: bytemuck::cast_slice(&[light.to_raw()]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -333,6 +288,147 @@ impl State {
             label: None,
         });
 
+        let shadow_texture = texture::Texture::create_depth_texture(&device, &config, "shadow_texture");
+        
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
+        let shadow_pass = {
+            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.vert.spv"));
+
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Shadow Pipeline Layout"),
+                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout, &light_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+            // Create the render pipeline
+            println!("creating shadow pipeline");
+            let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("shadow pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &vert_shader,
+                    entry_point: "main",
+                    buffers: &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                },
+                fragment: None,
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    clamp_depth: device.features().contains(wgpu::Features::DEPTH_CLAMPING),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: texture::Texture::DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState {
+                        constant: 2, // corresponds to bilinear filtering
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                multisample: wgpu::MultisampleState::default(),
+            });
+
+            renderpass::Pass {
+                pipeline
+            }
+        };
+
+        let (camera_pass, shadow_bind_group) = {
+            let shadow_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler {
+                            comparison: true,
+                            filtering: true
+                        },
+                        count: None,
+                    }],
+                label: Some("shadow_bind_group_layout"),
+            });
+
+            let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &shadow_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&shadow_texture.view)
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler)
+                    }
+                ],
+                label: Some("shadow_bind_group"),
+            });
+
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("main"),
+                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout, &light_bind_group_layout, &shadow_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.vert.spv"));
+            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.frag.spv"));
+
+            println!("creating camera pipeline");
+            let pipeline = create_render_pipeline(
+                &device,
+                &pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                vert_shader,
+                frag_shader,
+            );
+
+            (renderpass::Pass {pipeline}, shadow_bind_group)
+        };
+
         let camera_controller = CameraController::new(0.2);
 
         let light_render_pipeline = {
@@ -342,9 +438,10 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("light.vert.spv"));
-            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("light.frag.spv"));
+            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/light.vert.spv"));
+            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/light.frag.spv"));
 
+            println!("creating light pipeline");
             create_render_pipeline(
                 &device,
                 &layout,
@@ -356,31 +453,8 @@ impl State {
             )
         };
 
-        let render_pipeline = {
-            let render_pipeline_layout =
-                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[
-                        &texture_bind_group_layout,
-                        &camera_bind_group_layout,
-                        &light_bind_group_layout,
-                    ],
-                    push_constant_ranges: &[],
-                });
-
-            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
-            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
-
-            create_render_pipeline(
-                &device,
-                &render_pipeline_layout,
-                config.format,
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[model::ModelVertex::desc(), InstanceRaw::desc()],
-                vert_shader,
-                frag_shader,
-            )
-        };
+        let camera_depth_tex = texture::Texture::create_depth_texture(&device, &config, "camera_depth_texture");
+        let camera_depth = camera_depth_tex.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         Self {
             surface,
@@ -388,9 +462,7 @@ impl State {
             queue,
             config,
             size,
-            render_pipeline,
-            light_render_pipeline,
-            diffuse_bind_group,
+            
             camera,
             camera_uniform,
             camera_buffer,
@@ -400,18 +472,27 @@ impl State {
             instance_buffer,
             obj_model,
             depth_texture,
-            light_uniform,
+            light,
             light_buffer,
             light_bind_group,
+
+            shadow_pass,
+            shadow_texture,
+            shadow_bind_group,
+            camera_pass,
+            camera_depth,
+            light_render_pipeline,
         }
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-        }
+        self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+        self.size = new_size;
+        self.config.width = new_size.width;
+        self.config.height = new_size.height;
+        self.surface.configure(&self.device, &self.config);
+        self.depth_texture =
+            texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -427,15 +508,14 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position =
-            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
-                * old_position)
-                .into();
+        let old_position = self.light.position.to_vec();
+        self.light.position =
+            cgmath::Point3::from_vec(cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
+                * old_position);
         self.queue.write_buffer(
             &self.light_buffer,
             0,
-            bytemuck::cast_slice(&[self.light_uniform]),
+            bytemuck::cast_slice(&[self.light.to_raw()]),
         )
     }
 
@@ -451,6 +531,33 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
+        encoder.push_debug_group("shadow passes");
+        {
+            // Shadow Pass
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                }),
+            });
+
+            pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            pass.set_pipeline(&self.shadow_pass.pipeline);
+            pass.draw_model_instanced(
+                &self.obj_model,
+                0..self.instances.len() as u32,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+        }
+        encoder.pop_debug_group();
 
         {
             let mut _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -469,7 +576,7 @@ impl State {
                     },
                 }],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
+                    view: &self.camera_depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
@@ -488,14 +595,14 @@ impl State {
                 &self.light_bind_group,
             );
 
-            _render_pass.set_pipeline(&self.render_pipeline);
-
             // Draw
-            _render_pass.draw_model_instanced(
+            _render_pass.set_pipeline(&self.camera_pass.pipeline);
+            _render_pass.draw_shadow_model_instanced(
                 &self.obj_model,
                 0..self.instances.len() as u32,
                 &self.camera_bind_group,
                 &self.light_bind_group,
+                &self.shadow_bind_group,
             );
         }
 

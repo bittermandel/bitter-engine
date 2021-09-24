@@ -172,6 +172,15 @@ pub trait DrawModel<'a> {
         camera: &'a wgpu::BindGroup,
         light: &'a wgpu::BindGroup,
     );
+    fn draw_shadow_mesh_instanced(
+        &mut self,
+        mesh: &'a Mesh,
+        material: &'a Material,
+        instances: Range<u32>,
+        camera: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
+        shadow: &'a wgpu::BindGroup,
+    );
     fn draw_model(
         &mut self,
         model: &'a Model,
@@ -184,6 +193,14 @@ pub trait DrawModel<'a> {
         instances: Range<u32>,
         camera: &'a wgpu::BindGroup,
         light: &'a wgpu::BindGroup,
+    );
+    fn draw_shadow_model_instanced(
+        &mut self,
+        model: &'a Model,
+        instances: Range<u32>,
+        camera: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
+        shadow: &'a wgpu::BindGroup,
     );
 }
 
@@ -217,6 +234,24 @@ where
         self.draw_indexed(0..mesh.num_elements, 0, instances);
     }
 
+    fn draw_shadow_mesh_instanced(
+        &mut self,
+        mesh: &'a Mesh,
+        material: &'a Material,
+        instances: Range<u32>,
+        camera: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
+        shadow: &'a wgpu::BindGroup,
+    ) {
+        self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+        self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        self.set_bind_group(0, &material.bind_group, &[]);
+        self.set_bind_group(1, camera, &[]);
+        self.set_bind_group(2, light, &[]);
+        self.set_bind_group(3, shadow, &[]);
+        self.draw_indexed(0..mesh.num_elements, 0, instances);
+    }
+
     fn draw_model(
         &mut self,
         model: &'a Model,
@@ -236,6 +271,20 @@ where
         for mesh in &model.meshes {
             let material = &model.materials[mesh.material];
             self.draw_mesh_instanced(mesh, material, instances.clone(), camera, light);
+        }
+    }
+
+    fn draw_shadow_model_instanced(
+        &mut self,
+        model: &'a Model,
+        instances: Range<u32>,
+        camera: &'a wgpu::BindGroup,
+        light: &'a wgpu::BindGroup,
+        shadow: &'a wgpu::BindGroup,
+    ) {
+        for mesh in &model.meshes {
+            let material = &model.materials[mesh.material];
+            self.draw_shadow_mesh_instanced(mesh, material, instances.clone(), camera, light, shadow);
         }
     }
 }

@@ -58,9 +58,9 @@ fn main() -> Result<()> {
 
     // Collect all shaders recursively within /src/
     let mut shader_paths = [
-        glob("./src/**/*.vert")?,
-        glob("./src/**/*.frag")?,
-        glob("./src/**/*.comp")?,
+        glob("./shaders/**/*.vert")?,
+        glob("./shaders/**/*.frag")?,
+        glob("./shaders/**/*.comp")?,
     ];
 
     // This could be parallelized
@@ -94,7 +94,7 @@ fn main() -> Result<()> {
         let mut module_info = validator.validate(&module).unwrap();
 
         let spv =
-            naga::back::spv::write_vec(&module, &module_info, &naga::back::spv::Options::default())
+            naga::back::spv::write_vec(&module, &module_info, &naga::back::spv::Options{flags: naga::back::spv::WriterFlags::empty(), ..Default::default()})
                 .unwrap();
 
         let bytes = spv

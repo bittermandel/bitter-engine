@@ -14,13 +14,17 @@ uniform Camera {
     mat4 u_view_proj;
 };
 
+layout(set=2, binding=0)
+uniform Light {
+    vec4 light_proj;
+    vec4 light_position;
+    vec4 light_color;
+};
+
 layout(location=5) in vec4 model_matrix_0;
 layout(location=6) in vec4 model_matrix_1;
 layout(location=7) in vec4 model_matrix_2;
 layout(location=8) in vec4 model_matrix_3;
-layout(location=9) in vec3 normal_matrix_0;
-layout(location=10) in vec3 normal_matrix_1;
-layout(location=11) in vec3 normal_matrix_2;
 
 void main() {
     mat4 model_matrix = mat4(
@@ -30,11 +34,7 @@ void main() {
         model_matrix_3
     );
 
-    mat3 normal_matrix = mat3(
-        normal_matrix_0,
-        normal_matrix_1,
-        normal_matrix_2
-    );
+    mat3 normal_matrix = mat3(transpose(inverse(model_matrix)));
 
     v_tex_coords = a_tex_coords;
     
@@ -43,5 +43,5 @@ void main() {
     vec4 model_space = model_matrix * vec4(a_position, 1.0);
     v_position = model_space.xyz;
 
-    gl_Position = u_view_proj * model_space;
+    gl_Position = light_proj * model_space;
 }
