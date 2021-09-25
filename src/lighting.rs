@@ -1,24 +1,35 @@
 use std::ops::Range;
 
-use crate::{camera::OPENGL_TO_WGPU_MATRIX, model::{Mesh, Model}};
+use crate::{
+    camera::OPENGL_TO_WGPU_MATRIX,
+    model::{Mesh, Model},
+};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightRaw{
+pub struct LightRaw {
     pub proj: [[f32; 4]; 4],
     pub position: [f32; 4],
     pub color: [f32; 4],
 }
 
-pub struct Light{
+#[derive(Debug)]
+pub struct Light {
     pub position: cgmath::Point3<f32>,
 }
 
 impl Light {
     pub fn to_raw(&self) -> LightRaw {
-        use cgmath::{Deg, EuclideanSpace, Matrix4, PerspectiveFov, Point3, Vector3};
-
-        let mx_view = Matrix4::look_at_rh(self.position, Point3::origin(), Vector3::unit_z());
+        use cgmath::{Deg, Matrix4, PerspectiveFov, Point3, Vector3};
+        let mx_view = Matrix4::look_at_rh(
+            self.position,
+            Point3 {
+                x: -1.0,
+                y: -1.0,
+                z: 0.0,
+            },
+            Vector3::unit_z(),
+        );
         let projection = PerspectiveFov {
             fovy: Deg(45.0).into(),
             aspect: 1.0,
@@ -27,16 +38,11 @@ impl Light {
         };
         let mx_correction = OPENGL_TO_WGPU_MATRIX;
         let mx_view_proj =
-            cgmath::Matrix4::from(projection.to_perspective()) * mx_view;
+            mx_correction * cgmath::Matrix4::from(projection.to_perspective()) * mx_view;
         LightRaw {
             proj: *mx_view_proj.as_ref(),
             position: [self.position.x, self.position.y, self.position.z, 1.0],
-            color: [
-                1.0,
-                1.0,
-                1.0,
-                1.0,
-            ],
+            color: [1.0, 1.0, 1.0, 1.0],
         }
     }
 }

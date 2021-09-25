@@ -103,7 +103,7 @@ impl Model {
                         resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
                     },
                 ],
-                label: None,
+                label: Some("material_bind_group"),
             });
 
             materials.push(Material {
@@ -284,7 +284,14 @@ where
     ) {
         for mesh in &model.meshes {
             let material = &model.materials[mesh.material];
-            self.draw_shadow_mesh_instanced(mesh, material, instances.clone(), camera, light, shadow);
+            self.draw_shadow_mesh_instanced(
+                mesh,
+                material,
+                instances.clone(),
+                camera,
+                light,
+                shadow,
+            );
         }
     }
 }

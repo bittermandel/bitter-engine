@@ -6,7 +6,7 @@ use lighting::DrawLight;
 use log::Log;
 use model::{DrawModel, Model};
 use std::iter;
-use wgpu::{RenderPass, util::DeviceExt};
+use wgpu::{util::DeviceExt, RenderPass};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -24,8 +24,8 @@ mod cameracontroller;
 mod lighting;
 mod model;
 mod pipeline;
-mod texture;
 mod renderpass;
+mod texture;
 
 struct Instance {
     position: cgmath::Vector3<f32>,
@@ -65,22 +65,22 @@ impl InstanceRaw {
                     offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
-                }/*,
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
-                    shader_location: 9,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 19]>() as wgpu::BufferAddress,
-                    shader_location: 10,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
-                    shader_location: 11,
-                    format: wgpu::VertexFormat::Float32x3,
-                },*/
+                }, /*,
+                   wgpu::VertexAttribute {
+                       offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                       shader_location: 9,
+                       format: wgpu::VertexFormat::Float32x3,
+                   },
+                   wgpu::VertexAttribute {
+                       offset: mem::size_of::<[f32; 19]>() as wgpu::BufferAddress,
+                       shader_location: 10,
+                       format: wgpu::VertexFormat::Float32x3,
+                   },
+                   wgpu::VertexAttribute {
+                       offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
+                       shader_location: 11,
+                       format: wgpu::VertexFormat::Float32x3,
+                   },*/
             ],
         }
     }
@@ -128,7 +128,7 @@ struct State {
     shadow_texture: texture::Texture,
     shadow_bind_group: wgpu::BindGroup,
     camera_pass: renderpass::Pass,
-    camera_depth: wgpu::TextureView
+    camera_depth: wgpu::TextureView,
 }
 
 impl State {
@@ -215,11 +215,7 @@ impl State {
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
-                    let position = cgmath::Vector3 {
-                        x,
-                        y: 0.0,
-                        z,
-                    };
+                    let position = cgmath::Vector3 { x, y: 0.0, z } - INSTANCE_DISPLACEMENT;
 
                     let rotation = if position.is_zero() {
                         cgmath::Quaternion::from_axis_angle(
@@ -255,7 +251,11 @@ impl State {
         .unwrap();
 
         let light = lighting::Light {
-            position: cgmath::Point3 { x: 2.0, y: 2.0, z: 2.0 }
+            position: cgmath::Point3 {
+                x: 2.0,
+                y: 15.0,
+                z: 2.0,
+            },
         };
 
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -276,7 +276,7 @@ impl State {
                     },
                     count: None,
                 }],
-                label: None,
+                label: Some("light_bind_group_layout"),
             });
 
         let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -285,11 +285,12 @@ impl State {
                 binding: 0,
                 resource: light_buffer.as_entire_binding(),
             }],
-            label: None,
+            label: Some("light_bind_group"),
         });
 
-        let shadow_texture = texture::Texture::create_depth_texture(&device, &config, "shadow_texture");
-        
+        let shadow_texture =
+            texture::Texture::create_depth_texture(&device, &config, "shadow_texture");
+
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
@@ -321,11 +322,16 @@ impl State {
         });
 
         let shadow_pass = {
-            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.vert.spv"));
+            let vert_shader =
+                device.create_shader_module(&wgpu::include_spirv!("../shaders/shadow.vert.spv"));
 
             let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Shadow Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout, &light_bind_group_layout],
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -361,59 +367,66 @@ impl State {
                 multisample: wgpu::MultisampleState::default(),
             });
 
-            renderpass::Pass {
-                pipeline
-            }
+            renderpass::Pass { pipeline }
         };
 
         let (camera_pass, shadow_bind_group) = {
-            let shadow_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2
+            let shadow_bind_group_layout =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                sample_type: wgpu::TextureSampleType::Depth,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                            },
+                            count: None,
                         },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler {
-                            comparison: true,
-                            filtering: true
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler {
+                                comparison: true,
+                                filtering: true,
+                            },
+                            count: None,
                         },
-                        count: None,
-                    }],
-                label: Some("shadow_bind_group_layout"),
-            });
+                    ],
+                    label: Some("shadow_bind_group_layout"),
+                });
 
             let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &shadow_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&shadow_texture.view)
+                        resource: wgpu::BindingResource::TextureView(&shadow_texture.view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler)
-                    }
+                        resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler),
+                    },
                 ],
                 label: Some("shadow_bind_group"),
             });
 
             let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("main"),
-                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout, &light_bind_group_layout, &shadow_bind_group_layout],
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                    &shadow_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
-            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.vert.spv"));
-            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.frag.spv"));
+            let vert_shader =
+                device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.vert.spv"));
+            let frag_shader =
+                device.create_shader_module(&wgpu::include_spirv!("../shaders/shader.frag.spv"));
 
             println!("creating camera pipeline");
             let pipeline = create_render_pipeline(
@@ -426,7 +439,7 @@ impl State {
                 frag_shader,
             );
 
-            (renderpass::Pass {pipeline}, shadow_bind_group)
+            (renderpass::Pass { pipeline }, shadow_bind_group)
         };
 
         let camera_controller = CameraController::new(0.2);
@@ -438,8 +451,10 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-            let vert_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/light.vert.spv"));
-            let frag_shader = device.create_shader_module(&wgpu::include_spirv!("../shaders/light.frag.spv"));
+            let vert_shader =
+                device.create_shader_module(&wgpu::include_spirv!("../shaders/light.vert.spv"));
+            let frag_shader =
+                device.create_shader_module(&wgpu::include_spirv!("../shaders/light.frag.spv"));
 
             println!("creating light pipeline");
             create_render_pipeline(
@@ -453,8 +468,11 @@ impl State {
             )
         };
 
-        let camera_depth_tex = texture::Texture::create_depth_texture(&device, &config, "camera_depth_texture");
-        let camera_depth = camera_depth_tex.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let camera_depth_tex =
+            texture::Texture::create_depth_texture(&device, &config, "camera_depth_texture");
+        let camera_depth = camera_depth_tex
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         Self {
             surface,
@@ -462,7 +480,7 @@ impl State {
             queue,
             config,
             size,
-            
+
             camera,
             camera_uniform,
             camera_buffer,
@@ -509,14 +527,16 @@ impl State {
         );
 
         let old_position = self.light.position.to_vec();
-        self.light.position =
-            cgmath::Point3::from_vec(cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
-                * old_position);
+        self.light.position = cgmath::Point3::from_vec(
+            cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
+                * old_position,
+        );
         self.queue.write_buffer(
             &self.light_buffer,
             0,
             bytemuck::cast_slice(&[self.light.to_raw()]),
-        )
+        );
+        println!("{:?}", self.light.to_raw());
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

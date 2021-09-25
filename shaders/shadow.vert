@@ -8,15 +8,9 @@ layout(location=0) out vec2 v_tex_coords;
 layout(location=1) out vec3 v_normal;
 layout(location=2) out vec3 v_position;
 
-layout(set=1, binding=0) 
-uniform Camera {
-    vec3 u_view_position; // unused
-    mat4 u_view_proj;
-};
-
 layout(set=2, binding=0)
 uniform Light {
-    vec4 light_proj;
+    mat4 light_proj;
     vec4 light_position;
     vec4 light_color;
 };
