@@ -47,52 +47,24 @@ void main() {
         float shadow = shadow_calc(homogeneous_coords);  
     }
 
-    // We don't need (or want) much ambient light, so 0.1 is fine
-    /*float ambient_strength = 0.0;
-    vec3 ambient_color = light_color.xyz * ambient_strength;
-
-    vec3 normal = normalize(v_normal);
-    vec3 light_dir = normalize(light_position.xyz - v_position.xyz);
-    
-    float diffuse_strength = max(dot(normal, light_dir), 0.0);
-    vec3 diffuse_color = light_color.xyz * diffuse_strength;
-
-    vec3 view_dir = normalize(u_view_position - v_position.xyz);
-    vec3 half_dir = normalize(view_dir + light_dir);
-
-    float specular_strength = pow(max(dot(normal, half_dir), 0.0), 32);
-    vec3 specular_color = specular_strength * light_color.xyz;
-
-    vec3 result = ambient_color + shadow * (diffuse_color + specular_color);
-
-    // Since lights don't typically (afaik) cast transparency, so we use
-    // the alpha here at the end.
-    f_color = vec4(result * object_color.xyz, object_color.a);*/
-    vec3 normal = normalize(v_normal);
-    vec3 light_dir = normalize(light_position.xyz - v_position.xyz);
-
     float distance = length(light_position - v_position);
-    float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
-
-    float theta = dot(light_dir, normalize(-vec3(-1.0, -1.0, 0.0)));
+    float attenuation = 1.0 / (1.0 + 0.007 * distance + 0.002 * (distance * distance));
 
     vec3 ambient = vec3(0.05, 0.05, 0.05);
 
-    if(theta > cos(12.5)) {
-        float diffuse = max(0.0, dot(normal, light_dir));
+    vec3 normal = normalize(v_normal);
+    vec3 light_dir = normalize(light_position.xyz - v_position.xyz);
+    float diffuse = max(0.0, dot(normal, light_dir));
 
-        vec3 view_dir = normalize(u_view_position - v_position.xyz);
-        vec3 half_dir = normalize(view_dir + light_dir);
-        float specular = pow(max(dot(normal, half_dir), 0.0), 32);
+    vec3 view_dir = normalize(u_view_position - v_position.xyz);
+    vec3 half_dir = normalize(view_dir + light_dir);
+    float specular = pow(max(dot(normal, half_dir), 0.0), 32);
 
-        diffuse *= attenuation;
-        ambient *= attenuation;
-        specular *= attenuation;
-        
-        vec3 color = ambient + shadow * (diffuse * specular * light_color.xyz);
+    diffuse *= attenuation;
+    ambient *= attenuation;
+    specular *= attenuation;
+    
+    vec3 color = ambient + shadow * (diffuse * specular * light_color.xyz);
 
-        f_color = vec4(1.0, 1.0, 1.0, 1.0) * object_color;
-    } else {
-        f_color = vec4(ambient, 1.0) * object_color;
-    }
+    f_color = vec4(color, 1.0) * object_color;
 }

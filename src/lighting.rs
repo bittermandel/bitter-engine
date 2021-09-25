@@ -20,16 +20,9 @@ pub struct Light {
 
 impl Light {
     pub fn to_raw(&self) -> LightRaw {
-        use cgmath::{Deg, Matrix4, PerspectiveFov, Point3, Vector3};
-        let mx_view = Matrix4::look_at_rh(
-            self.position,
-            Point3 {
-                x: -1.0,
-                y: -1.0,
-                z: 0.0,
-            },
-            Vector3::unit_z(),
-        );
+        use cgmath::{Deg, EuclideanSpace, Matrix4, PerspectiveFov, Point3, Vector3};
+
+        let mx_view = Matrix4::look_at_rh(self.position, Point3::origin(), Vector3::unit_z());
         let projection = PerspectiveFov {
             fovy: Deg(45.0).into(),
             aspect: 1.0,

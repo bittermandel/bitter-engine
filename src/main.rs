@@ -253,7 +253,7 @@ impl State {
         let light = lighting::Light {
             position: cgmath::Point3 {
                 x: 2.0,
-                y: 15.0,
+                y: 5.0,
                 z: 2.0,
             },
         };
@@ -298,7 +298,7 @@ impl State {
         });
 
         let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {N
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
