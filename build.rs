@@ -88,10 +88,10 @@ fn main() -> Result<()> {
         let mut validator =
             naga::valid::Validator::new(ValidationFlags::all(), Capabilities::all());
 
-        let mut options = Options::from(shader.kind);
+        let options = Options::from(shader.kind);
 
-        let mut module = parser.parse(&options, &shader.src).unwrap();
-        let mut module_info = validator.validate(&module).unwrap();
+        let module = parser.parse(&options, &shader.src).unwrap();
+        let module_info = validator.validate(&module).unwrap();
 
         let spv =
             naga::back::spv::write_vec(&module, &module_info, &naga::back::spv::Options{flags: naga::back::spv::WriterFlags::empty(), ..Default::default()})

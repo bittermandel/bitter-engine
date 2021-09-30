@@ -1,26 +1,18 @@
 [package]
-name = "wgpu-engine"
+name = "bitter-engine"
 version = "0.1.0"
-authors = ["Jonathan Grahl <jonathan@keyholders.io>"]
+authors = ["jonathan.grahl <jonathan.grahl@embark-studios.com>"]
 edition = "2018"
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = "0.23"
-winit = "0.25"
-cgmath = "0.18"
-env_logger = "0.9"
-log = "0.4"
-wgpu = {version = "0.10.1", features  = ["spirv"]}
-pollster = "0.2"
-bytemuck = { version = "1.4", features = [ "derive" ] }
-anyhow = "1.0"
-tobj = "3.0"
+winit = "0.25.0"
+wgpu = "0.10.2"
 
 [build-dependencies]
-anyhow = "1.0"
-fs_extra = "1.2.0"
-glob = "0.3"
 naga = {version = "0.6.3", features = ["glsl-in", "spv-out"]}
+anyhow = "1.0.44"
+fs_extra = "1.2.0"
+glob = "0.3.0"
