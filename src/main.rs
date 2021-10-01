@@ -5,10 +5,18 @@ struct State {
 }
 
 impl State {
-    fn new(window: &Window) -> Self {
-        let instance = wgpu::Instance::new(wgpu::Backends::VULKAN);
+    async fn new(window: &Window) -> Self {
+        let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
 
         let surface = unsafe { instance.create_surface(window) };
+
+        let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
         Self {}
     }
@@ -22,7 +30,7 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let state = State::new(&window);
+    let state = pollster::block_on(State::new(&window));
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

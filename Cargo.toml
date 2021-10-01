@@ -10,6 +10,7 @@ resolver = "2"
 [dependencies]
 winit = "0.25.0"
 wgpu = "0.10.2"
+pollster = "0.2.4"
 
 [build-dependencies]
 naga = {version = "0.6.3", features = ["glsl-in", "spv-out"]}
