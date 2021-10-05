@@ -9,8 +9,11 @@ resolver = "2"
 
 [dependencies]
 winit = "0.25.0"
-wgpu = "0.10.2"
+wgpu = {version="0.10.2", features=["spirv"]}
 pollster = "0.2.4"
+anyhow = "1.0.44"
+bytemuck = { version = "1.7.2", features = [ "derive" ] }
+cgmath = "0.18.0"
 
 [build-dependencies]
 naga = {version = "0.6.3", features = ["glsl-in", "spv-out"]}
