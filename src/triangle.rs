@@ -1,6 +1,6 @@
 use wgpu::util::{DeviceExt, RenderEncoder};
 
-use crate::camera;
+use crate::camera::{self, Camera};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -43,13 +43,14 @@ impl<'a> Triangle {
         vert_shader_desc: &wgpu::ShaderModuleDescriptor,
         frag_shader_desc: &wgpu::ShaderModuleDescriptor,
         camera_bind_layout: &wgpu::BindGroupLayout,
+        light_bind_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let vert_shader = device.create_shader_module(vert_shader_desc);
         let frag_shader = device.create_shader_module(frag_shader_desc);
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("triangle pipeline layout"),
-            bind_group_layouts: &[camera_bind_layout],
+            bind_group_layouts: &[camera_bind_layout, light_bind_layout],
             ..Default::default()
         });
 
@@ -114,10 +115,16 @@ impl<'a> Triangle {
         }
     }
 
-    pub fn render(&'a self, render_pass: &mut wgpu::RenderPass<'a>, camera: &'a wgpu::BindGroup) {
+    pub fn render(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        camera_bind_group: &'a wgpu::BindGroup,
+        dir_light_bind_group: &'a wgpu::BindGroup,
+    ) {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_bind_group(0, camera, &[]);
+        render_pass.set_bind_group(0, camera_bind_group, &[]);
+        render_pass.set_bind_group(1, dir_light_bind_group, &[]);
         render_pass.draw(0..3, 0..1);
     }
 }
